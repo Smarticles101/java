@@ -164,7 +164,7 @@ make_local_trackler() {
   cp -r ${track_root}/exercises tracks/${TRACK}
 
   gem install bundler
-  bundle install
+  bundle install -j4
   gem build trackler.gemspec
 
   # Make *this* the gem that x-api uses when we build x-api.
@@ -181,7 +181,7 @@ start_x_api() {
   pushd $xapi_home
 
   gem install bundler
-  bundle install
+  bundle install -j4
   RACK_ENV=development rackup &
   xapi_pid=$!
   sleep 5
@@ -233,7 +233,7 @@ solve_all_exercises() {
 
     pushd ${exercism_exercises_dir}/${TRACK}/${exercise}
     # Check that tests compile before we strip @Ignore annotations
-    "$EXECPATH"/gradlew compileTestJava
+    "$EXECPATH"/gradlew compileTestJava --configure-on-demand --parallel
     # Ensure we run all the tests (as delivered, all but the first is @Ignore'd)
     for testfile in `find . -name "*Test.${TRACK_SRC_EXT}"`; do
       # Strip @Ignore annotations to ensure we run the tests (as delivered, all but the first is @Ignore'd).
@@ -241,7 +241,7 @@ solve_all_exercises() {
       # The stripping implementations here and in copyTestsFilteringIgnores should be kept consistent.
       sed 's/@Ignore\(\(.*\)\)\{0,1\}//' ${testfile} > "${tempfile}" && mv "${tempfile}" "${testfile}"
     done
-    "$EXECPATH"/gradlew test
+    "$EXECPATH"/gradlew test --configure-on-demand --parallel &
     popd
 
     current_exercise_number=$((current_exercise_number + 1))
@@ -269,18 +269,24 @@ main() {
 
   clean "${build_dir}"
 
-  # Make a local version of trackler that includes the source from this repo.
-  git_clone "x-api" "${xapi_home}"
-  git_clone "trackler" "${trackler_home}"
-  assert_ruby_installed "${trackler_home}"
+  # Download everything we need in parallel
+  git_clone "x-api" "${xapi_home}" &
+  git_clone "trackler" "${trackler_home}" &
+  download_exercism_cli $(get_operating_system) $(get_cpu_architecture) "${exercism_home}" &
+  wait
+
+  # Check and install the ruby stuff we need in parallel
+  assert_ruby_installed "${trackler_home}" &
+  assert_ruby_installed "${xapi_home}" &
+  wait
+
+  # Make a local version of trackler
   make_local_trackler "${trackler_home}" "${xapi_home}"
 
-  # Stand-up a local instance of x-api so we can fetch the exercises through it.
-  assert_ruby_installed "${xapi_home}"
+  # Start-up a local instance of x-api so we can fetch the exercises through it.
   start_x_api "${xapi_home}"
 
   # Create a CLI install and config just for this build; this script does not use your CLI install.
-  download_exercism_cli $(get_operating_system) $(get_cpu_architecture) "${exercism_home}"
   configure_exercism_cli "${exercism_home}" "${exercism_configfile}" "${xapi_port}"
 
   solve_all_exercises "${exercism_home}" "${exercism_configfile}"
