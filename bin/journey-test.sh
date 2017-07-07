@@ -233,7 +233,7 @@ solve_all_exercises() {
 
     pushd ${exercism_exercises_dir}/${TRACK}/${exercise}
     # Check that tests compile before we strip @Ignore annotations
-    "$EXECPATH"/gradlew compileTestJava --configure-on-demand --parallel
+    "$EXECPATH"/gradlew compileTestJava --configure-on-demand --parallel &
     # Ensure we run all the tests (as delivered, all but the first is @Ignore'd)
     for testfile in `find . -name "*Test.${TRACK_SRC_EXT}"`; do
       # Strip @Ignore annotations to ensure we run the tests (as delivered, all but the first is @Ignore'd).
